@@ -3,7 +3,7 @@
 //#include "MurmurHash3.cpp"
 #include <iostream>
 #include <climits>
-#include <zlib.h>
+#include "zlib.h"
 #include <stdio.h>
 #include "kseq.h"
 #include <time.h>
@@ -50,7 +50,9 @@ using spp::sparse_hash_map;
 
 using namespace std;
 //KSEQ_INIT(gzFile, gzread)
-KSEQ_INIT(int, read)
+KSEQ_INIT(int, read)        // The C header file kseq.h is a small library for parsing the FASTA/FASTQ format.
+                            // For ordinary file I/O, you can use KSEQ_INIT(gzFile, gzread) to set the type of file handler and the read() function.
+                            // FMI: http://lh3lh3.users.sourceforge.net/parsefastq.shtml
 std::map<char, char> mapp = {{'A', 'T'}, {'C', 'G'}, {'G', 'C'}, {'T', 'A'}, {'N', 'N'}};
 
 // Function to reverse string and return reverse string pointer of that
@@ -58,24 +60,24 @@ std::map<char, char> mapp = {{'A', 'T'}, {'C', 'G'}, {'G', 'C'}, {'T', 'A'}, {'N
 {
     int start, end, len;
     char temp, *ptr = NULL;
-    len = strlen(str);  
-    ptr = (char*) malloc(sizeof(char)*(len+1)); 
-    strcpy(ptr,str);           
+    len = strlen(str);
+    ptr = (char*) malloc(sizeof(char)*(len+1));
+    strcpy(ptr,str);
     for (start=0,end=len-1; start<=end; start++,end--)
     {
         temp = ptr[start];
-        ptr[start] = mapp.at(ptr[end]);       
+        ptr[start] = mapp.at(ptr[end]);
         ptr[end] = mapp.at(temp);
     }
     ptr[len] = '\0';
     strcpy(str, ptr);
-    free(ptr); 
+    free(ptr);
 }*/
 
 /*char complement(char n)
-{   
+{
     switch(n)
-    {   
+    {
     case 'A':
         return 'T';
     case 'T':
@@ -84,10 +86,10 @@ std::map<char, char> mapp = {{'A', 'T'}, {'C', 'G'}, {'G', 'C'}, {'T', 'A'}, {'N
         return 'C';
     case 'C':
         return 'G';
-    }   
+    }
     assert(false);
     return ' ';
-}*/   
+}*/
 static const int MultiplyDeBruijnBitPosition[32] =
 {
   0, 1, 28, 2, 29, 14, 24, 3, 30, 22, 20, 15, 25, 17, 4, 8,
@@ -98,7 +100,7 @@ unsigned trailing_zeros(unsigned n) {
 }
 
 static const char basemap[255] =
-    {   
+    {
         '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', /*   0 -   9 */
         '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', /*  10 -  19 */
         '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', /*  20 -  29 */
@@ -184,7 +186,7 @@ unsigned trailing_zeros(uint64_t n) {
 
 void printHelp()
 {
-    
+
     cout << "KmerEst [options] -f <fasta/fastq> -k <k-mer length>  -s <sample size> -o <output file>"    << endl
     << "  -h               help"                                   << endl
     << "  -f <file>       Input sequence file "                << endl
@@ -192,24 +194,25 @@ void printHelp()
     << "  -s <sample size>        sample size (default 25m)"        << endl
      << "  -c coverage>       coverage (default 64)"        << endl
     << "  -o         	  Prefix of the Output file " << endl;
-    
+
     exit(0);
 }
- 
+
 int main(int argc, char** argv)
 {
-    
-    if(argc == 1){
+
+    if(argc == 1
+    {
       cout << argv[0] << " -f <seq.fa> -k  <kmerLen> -s <minHeap_Size> -c <coverage> -o <out.txt>" << endl;
       exit(0);
-    } 
-    int n=31;
-    int s = 25000000;
-    int cov = 64;
-    string f = "", outf = "";
-    for (int c = 1; c < argc; c++)
+    }
+    int n=31;                       // k-mer length
+    int s = 25000000;               // minimum heap size
+    int cov = 64;                   // coverage (?)
+    string f = "", outf = "";       // input and output FASTA files
+    for (int c = 1; c < argc; c++)  // parse command-line input
         {
-            
+
             if (!strcmp(argv[c], "-h"))       { printHelp(); }
             else if (!strcmp(argv[c], "-k"))     { n = atoi(argv[c+1]); c++; }
             else if (!strcmp(argv[c], "-f"))    { f = argv[c+1]; c++; }
@@ -217,8 +220,8 @@ int main(int argc, char** argv)
             else if (!strcmp(argv[c], "-c"))    { cov = atoi(argv[c+1]); c++; }
             else if (!strcmp(argv[c], "-o")) { outf = argv[c+1]; c++; }
         }
-        
-       if (f.empty()  || outf.empty())
+
+       if (f.empty()  || outf.empty())  // empty file(s) mentioned
         {
           printHelp();
         }
@@ -227,15 +230,20 @@ int main(int argc, char** argv)
     kseq_t *seq;
     int l;
     //fp = fopen(argv[1], "r");
-    fp = fopen(f.c_str(), "r");
+    fp = fopen(f.c_str(), "r");     // file pointer for input FASTA file
     if( fp == Z_NULL){
       cout<<"File: "<< f  << " does not exist" <<endl;
       exit(1);
     }
-    seq = kseq_init(fileno(fp));
+
+    // seq is the FASTA input parser
+    seq = kseq_init(fileno(fp));    // The C header file kseq.h is a small library for parsing the FASTA/FASTQ format.
+                                    // Function kseq_init() is used to initialize the parser and kseq_destroy() to destroy it.
+                                    // Function kseq_read() reads one sequence and fills the kseq_t struct
+                                    // FMI: http://lh3lh3.users.sourceforge.net/parsefastq.shtml
     int k = s;
     // int k = atoi(argv[3]); // size of maxheap i.e. sample size
-    //unordered_map<uint64_t, pair<uint8_t, uint32_t>> MAP; // (<hash>, <tz, count>>) 
+    //unordered_map<uint64_t, pair<uint8_t, uint32_t>> MAP; // (<hash>, <tz, count>>)
     //sparse_hash_map<uint32_t, pair<uint8_t, uint32_t>> MAP;
     //vector <google::sparse_hash_map<uint32_t, pair<uint8_t, uint32_t>> > MAP(64);
     //MAP.set_empty_key(-1);
@@ -258,15 +266,15 @@ int main(int argc, char** argv)
             ++no_kmers;
             uint8_t tz = trailing_zeros(hash);
             if(tz >= th){
-                //uint32_t hash = 0; 
-                //MurmurHash3_x86_32((uint8_t *)&hash1, 8, 0, &hash); 
-                //if(MAP.find(hash) != MAP.end()) MAP[hash].second += 1;  // increment the counter if already there 
-                if(MAP[tz].find(hash) != MAP[tz].end()) MAP[tz][hash] += 1; 
+                //uint32_t hash = 0;
+                //MurmurHash3_x86_32((uint8_t *)&hash1, 8, 0, &hash);
+                //if(MAP.find(hash) != MAP.end()) MAP[hash].second += 1;  // increment the counter if already there
+                if(MAP[tz].find(hash) != MAP[tz].end()) MAP[tz][hash] += 1;
                 //if(MAP.find(hash) != MAP.end()) MAP[hash].second += 1;
-                else{ //// insert if not there 
-                  //MAP.insert(make_pair(hash, make_pair(tz, 1))); 
-                  MAP[tz].insert(make_pair(hash, 1)); 
-                  ++count;  // insert if not there 
+                else{ //// insert if not there
+                  //MAP.insert(make_pair(hash, make_pair(tz, 1)));
+                  MAP[tz].insert(make_pair(hash, 1));
+                  ++count;  // insert if not there
                   //cout << "\r" << "count: " << count << flush;// << endl;
                   if(count == k){
                     int cnt = MAP[th].size();
@@ -274,10 +282,10 @@ int main(int argc, char** argv)
                     SMap().swap(MAP[th]);
                     //MAP[th].clear(); //MAP[th].resize(0);
                     ++th;
-                    cout  << "count: " << count << endl; 
+                    cout  << "count: " << count << endl;
                    /* int cnt = MAP[th].size();
                     MAP[th].clear();
-                    count = count - cnt; 
+                    count = count - cnt;
                     ++th;*/
                    /*for (auto it = MAP.begin(); it != MAP.end(); ++it){
                       if (it->second.first == th) { MAP.erase(it); } //it = MAP.erase(it);
@@ -299,7 +307,7 @@ int main(int argc, char** argv)
 	    ++itr;
 	}
     }
-    //exit(0); 
+    //exit(0);
     cout << "th: " << th << endl;
     cout << "No. of sequences: " << total << endl;
     FILE *fo = fopen(outf.c_str(), "w");
@@ -312,7 +320,7 @@ int main(int argc, char** argv)
     cout << endl;
     cout << "total: " << total << endl;
     cout << "no_kmer: " << no_kmers << endl;
-    //unsigned long freq[65]; 
+    //unsigned long freq[65];
    unsigned long *freq = new unsigned long[cov];
    for(int i=1; i<=cov; i++) freq[i] = 0;
     unsigned long tot = 0;
@@ -322,19 +330,19 @@ int main(int argc, char** argv)
       //for(auto& p: MAP){
         if(p.second <= cov) freq[p.second]++;
       }
-    } 
+    }
     /*for (auto it = m.begin(); it != m.end(); it++){
       if(it->second <= 65) freq[it->second]++;
     }*/
-    //FILE *fo = fopen(argv[4], "w"); 
+    //FILE *fo = fopen(argv[4], "w");
     cout << "th: " << th << endl;
     for(int i=1; i<=cov; i++){
       unsigned long fff = (freq[i]*pow(2, th));
-      fprintf(fo, "f%d\t%lu\n", i, fff); 
+      fprintf(fo, "f%d\t%lu\n", i, fff);
     }
     fclose(fo);
-    //unsigned long F0 = MAP.size() * pow(2, (th)); 
+    //unsigned long F0 = MAP.size() * pow(2, (th));
     //cout << "F0: " << F0 << endl;
     return 0;
-        
+
 }
