@@ -3,7 +3,7 @@
 //#include "MurmurHash3.cpp"
 #include <iostream>
 #include <climits>
-#include "zlib.h"
+#include <zlib.h>
 #include <stdio.h>
 #include "kseq.h"
 #include <time.h>
@@ -51,50 +51,18 @@ using spp::sparse_hash_map;
 using namespace std;
 //KSEQ_INIT(gzFile, gzread)
 KSEQ_INIT(int, read)        // The C header file kseq.h is a small library for parsing the FASTA/FASTQ format.
-                            // For ordinary file I/O, you can use KSEQ_INIT(gzFile, gzread) to set the type of file handler and the read() function.
+                            // For ordinary file I/O, you can use KSEQ_INIT(gzFile, gzread) to set the type of
+                            // file handler and the read() function.
                             // FMI: http://lh3lh3.users.sourceforge.net/parsefastq.shtml
 std::map<char, char> mapp = {{'A', 'T'}, {'C', 'G'}, {'G', 'C'}, {'T', 'A'}, {'N', 'N'}};
 
-// Function to reverse string and return reverse string pointer of that
-/*void ReverseConstString(char *str)
-{
-    int start, end, len;
-    char temp, *ptr = NULL;
-    len = strlen(str);
-    ptr = (char*) malloc(sizeof(char)*(len+1));
-    strcpy(ptr,str);
-    for (start=0,end=len-1; start<=end; start++,end--)
-    {
-        temp = ptr[start];
-        ptr[start] = mapp.at(ptr[end]);
-        ptr[end] = mapp.at(temp);
-    }
-    ptr[len] = '\0';
-    strcpy(str, ptr);
-    free(ptr);
-}*/
 
-/*char complement(char n)
-{
-    switch(n)
-    {
-    case 'A':
-        return 'T';
-    case 'T':
-        return 'A';
-    case 'G':
-        return 'C';
-    case 'C':
-        return 'G';
-    }
-    assert(false);
-    return ' ';
-}*/
 static const int MultiplyDeBruijnBitPosition[32] =
 {
   0, 1, 28, 2, 29, 14, 24, 3, 30, 22, 20, 15, 25, 17, 4, 8,
   31, 27, 13, 23, 21, 19, 16, 7, 26, 12, 18, 6, 11, 5, 10, 9
 };
+
 unsigned trailing_zeros(unsigned n) {
     return n ? __builtin_ctz(n) : -1;
 }
@@ -129,57 +97,7 @@ static const char basemap[255] =
         '\0', '\0', '\0', '\0', '\0'                                /* 250 - 254 */
     };
 
-/*uint32_t murmur3_32(const uint8_t* key, size_t len, uint32_t seed) {
-  uint32_t h = seed;
-  if (len > 3) {
-    const uint32_t* key_x4 = (const uint32_t*) key;
-    size_t i = len >> 2;
-    do {
-      uint32_t k = *key_x4++;
-      k *= 0xcc9e2d51;
-      k = (k << 15) | (k >> 17);
-      k *= 0x1b873593;
-      h ^= k;
-      h = (h << 13) | (h >> 19);
-      h = (h * 5) + 0xe6546b64;
-    } while (--i);
-    key = (const uint8_t*) key_x4;
-  }
-  if (len & 3) {
-    size_t i = len & 3;
-    uint32_t k = 0;
-    key = &key[i - 1];
-    do {
-      k <<= 8;
-      k |= *key--;
-    } while (--i);
-    k *= 0xcc9e2d51;
-    k = (k << 15) | (k >> 17);
-    k *= 0x1b873593;
-    h ^= k;
-  }
-  h ^= len;
-  h ^= h >> 16;
-  h *= 0x85ebca6b;
-  h ^= h >> 13;
-  h *= 0xc2b2ae35;
-  h ^= h >> 16;
-  return h;
-}
-*/
-/*
-struct comparator {
- bool operator()(uint64_t i, uint64_t j) {
- return i > j;
- }
-};
 
-struct CompareBySecond {
-    bool operator()(pair<int, int> const & a,
-                              pair<int, int> const & b)
-    { return a.second > b.second; }
-};
-*/
 unsigned trailing_zeros(uint64_t n) {
     return n ? __builtin_ctzll(n) : -1;
 }
@@ -201,148 +119,191 @@ void printHelp()
 int main(int argc, char** argv)
 {
 
-    if(argc == 1
+    if(argc == 1)
     {
       cout << argv[0] << " -f <seq.fa> -k  <kmerLen> -s <minHeap_Size> -c <coverage> -o <out.txt>" << endl;
       exit(0);
     }
     int n=31;                       // k-mer length
-    int s = 25000000;               // minimum heap size
+    int s = 25000000;               // sample size
     int cov = 64;                   // coverage (?)
     string f = "", outf = "";       // input and output FASTA files
     for (int c = 1; c < argc; c++)  // parse command-line input
         {
 
             if (!strcmp(argv[c], "-h"))       { printHelp(); }
-            else if (!strcmp(argv[c], "-k"))     { n = atoi(argv[c+1]); c++; }
-            else if (!strcmp(argv[c], "-f"))    { f = argv[c+1]; c++; }
-            else if (!strcmp(argv[c], "-s"))    { s = atoi(argv[c+1]); c++; }
-            else if (!strcmp(argv[c], "-c"))    { cov = atoi(argv[c+1]); c++; }
-            else if (!strcmp(argv[c], "-o")) { outf = argv[c+1]; c++; }
+            else if (!strcmp(argv[c], "-k"))     { n = atoi(argv[c+1]); c++; }  // k-mer length
+            else if (!strcmp(argv[c], "-f"))    { f = argv[c+1]; c++; }         // input file
+            else if (!strcmp(argv[c], "-s"))    { s = atoi(argv[c+1]); c++; }   // sample size
+            else if (!strcmp(argv[c], "-c"))    { cov = atoi(argv[c+1]); c++; } // coverage (?)
+            else if (!strcmp(argv[c], "-o")) { outf = argv[c+1]; c++; }         // output file
         }
 
        if (f.empty()  || outf.empty())  // empty file(s) mentioned
         {
           printHelp();
         }
-    //int n = atoi(argv[2]);
+
     FILE *fp;
     kseq_t *seq;
+    /*
+        The C header file kseq.h is a small library for parsing the FASTA/FASTQ format.
+        Function kseq_read() reads one sequence and fills the kseq_t struct which is:
+
+            typedef struct {
+                size_t l, m;
+                char *s;
+            } kstring_t;
+
+            typedef struct {
+                kstring_t name, comment, seq, qual;
+                int last_char;
+                kstream_t *f;
+            } kseq_t;
+
+        // FMI: http://lh3lh3.users.sourceforge.net/parsefastq.shtml
+    */
+
     int l;
-    //fp = fopen(argv[1], "r");
+
     fp = fopen(f.c_str(), "r");     // file pointer for input FASTA file
     if( fp == Z_NULL){
       cout<<"File: "<< f  << " does not exist" <<endl;
       exit(1);
     }
 
-    // seq is the FASTA input parser
-    seq = kseq_init(fileno(fp));    // The C header file kseq.h is a small library for parsing the FASTA/FASTQ format.
-                                    // Function kseq_init() is used to initialize the parser and kseq_destroy() to destroy it.
-                                    // Function kseq_read() reads one sequence and fills the kseq_t struct
-                                    // FMI: http://lh3lh3.users.sourceforge.net/parsefastq.shtml
-    int k = s;
-    // int k = atoi(argv[3]); // size of maxheap i.e. sample size
-    //unordered_map<uint64_t, pair<uint8_t, uint32_t>> MAP; // (<hash>, <tz, count>>)
-    //sparse_hash_map<uint32_t, pair<uint8_t, uint32_t>> MAP;
-    //vector <google::sparse_hash_map<uint32_t, pair<uint8_t, uint32_t>> > MAP(64);
-    //MAP.set_empty_key(-1);
-    // for(int i=0; i<64; i++) MAP[i].set_deleted_key(0);
+
+    /*
+        The C header file kseq.h is a small library for parsing the FASTA/FASTQ format.
+        Function kseq_init() is used to initialize the parser
+        and kseq_destroy() to destroy it.
+        Function kseq_read() reads one sequence and fills the kseq_t struct
+        FMI: http://lh3lh3.users.sourceforge.net/parsefastq.shtml
+    */
+    seq = kseq_init(fileno(fp));    // seq is the FASTA input parser
+    int k = s;                      // sample size
+
     typedef sparse_hash_map<uint64_t, uint32_t> SMap;
-    vector<SMap> MAP(64);
-   // vector < sparse_hash_map<uint32_t, uint32_t> > MAP(64);
+    vector<SMap> MAP(64);           // array of hashmaps for sampled k-mers
+
     cout << "read the Sequences .. " << endl;
-    int th = 0;
-    uint64_t total = 0, no_kmers = 0;
-    int count = 0;
+
+    int th = 0;                     // sample-size adaptation parameter 's';
+                                    // the threshold count of the trailing zeroes for hash values
+    uint64_t total = 0;             // count of sequences read
+    uint64_t no_kmers = 0;          // count of k-mers read
+    int count = 0;                  //
     uint64_t hash=0, fhVal=0, rhVal=0;
-    while ((l = kseq_read(seq)) >= 0) {
-        ++total;
+    while ((l = kseq_read(seq)) >= 0)   // read a sequence
+    {
+        ++total;    // one sequence read
         //cout << "\r" << total << " processing ..." << flush;
-        int len = strlen(seq->seq.s);
-        ntHashIterator itr(seq->seq.s, 1, n);
-        while (itr != itr.end()) {
-            hash = (*itr)[0];
-            ++no_kmers;
-            uint8_t tz = trailing_zeros(hash);
-            if(tz >= th){
-                //uint32_t hash = 0;
-                //MurmurHash3_x86_32((uint8_t *)&hash1, 8, 0, &hash);
-                //if(MAP.find(hash) != MAP.end()) MAP[hash].second += 1;  // increment the counter if already there
-                if(MAP[tz].find(hash) != MAP[tz].end()) MAP[tz][hash] += 1;
-                //if(MAP.find(hash) != MAP.end()) MAP[hash].second += 1;
-                else{ //// insert if not there
-                  //MAP.insert(make_pair(hash, make_pair(tz, 1)));
-                  MAP[tz].insert(make_pair(hash, 1));
-                  ++count;  // insert if not there
+
+        int len = strlen(seq->seq.s);           // length of the sequence
+        ntHashIterator itr(seq->seq.s, 1, n);   // ntHash iterator to iterate over the read sequence and provide
+                                                // ntHash values for each k-mer of length n; initialized with the first
+                                                // length-n window on the sequence
+
+        while (itr != itr.end())                            // iterate until the last window
+        {
+            hash = (*itr)[0];                               // get the ntHash value
+            ++no_kmers;                                     // one more k-mer encountered
+            uint8_t tz = trailing_zeros(hash);              // #trailing_zeroes of this k-mer
+            if(tz >= th)                                    // if #trailing_zeroes is greater than or equal to the
+                                                            // adaptive sampling parameter 's' (threshold value)
+            {
+                if(MAP[tz].find(hash) != MAP[tz].end())     // k-mer already present in hash map
+                    MAP[tz][hash] += 1;                     // increment k-mer count
+                else                                        // k-mer absent in hash map
+                {
+                  MAP[tz].insert(make_pair(hash, 1));       // insert k-mer into hash map
+                  ++count;                                  // increment #samples_present by one
                   //cout << "\r" << "count: " << count << flush;// << endl;
-                  if(count == k){
-                    int cnt = MAP[th].size();
-                    count = count - cnt;
-                    SMap().swap(MAP[th]);
+
+                    /*
+                        I guess there is a potential bug present in this conditional check. The conditional should be
+                        (count >= k) instead of (count == k).
+
+                        Assume that you have reached the max sample count 'k', and now have dropped the s'th hash map
+                        (MAP[th] here). Hence, the number of samples present 'count' drop down to
+                        (count - MAP[th].size()). Suppose that the hash map MAP[th] did not have any entries present
+                        prior to deletion. Hence, 'count' retains the same value 'k' as earlier. Now at the next
+                        iteration, suppose that you encounter a new k-mer, insert it to one of the hash maps accordingly,
+                        and increment 'count' by 1. So it goes to k + 1.
+
+                        BOOM! You will never drop any hash map anymore in the lifetime of this execution, and space usage
+                        will not be optimized as theorized.
+
+                        However, my proposal of the conditional (count >= k) also should present very unlikely yet
+                        potential bugs too, in case of a stream of hash values with very long suffixes of trailing
+                        zeroes, and the lower order entries in the hash map arrays being all empty.
+
+                        Best solution is to use a loop of the following format:
+                            while(count == k):
+                                drop hash maps and update count
+                    */
+                  if(count == k){                           // max sample count reached;
+                                                            // one hash map will be dropped now
+                    int cnt = MAP[th].size();               // size of the hash map to be dropped
+                    count = count - cnt;                    // #samples_present after dropping hash map
+                    SMap().swap(MAP[th]);                   // drop hash map from memory
                     //MAP[th].clear(); //MAP[th].resize(0);
-                    ++th;
+                    ++th;                                   // increment threshold (s parameter)
                     cout  << "count: " << count << endl;
-                   /* int cnt = MAP[th].size();
-                    MAP[th].clear();
-                    count = count - cnt;
-                    ++th;*/
-                   /*for (auto it = MAP.begin(); it != MAP.end(); ++it){
-                      if (it->second.first == th) { MAP.erase(it); } //it = MAP.erase(it);
-                      //else ++it;
-                    }
-                    count = MAP.size();
-                    ++th;*/
-                    //cout << "th: " << th << endl;
-                    /*decltype(MAP) newmap;
-                    for (auto&& p : MAP)
-                        if(p.second.first > th)
-                            newmap.emplace(move(p));
-                    MAP.swap(newmap);*/
-                    //count = MAP.size();
-                    //++th;
                   }
                 }
             }
-	    ++itr;
-	}
+	    ++itr;      // go over to the next window
+        }
     }
-    //exit(0);
-    cout << "th: " << th << endl;
-    cout << "No. of sequences: " << total << endl;
-    FILE *fo = fopen(outf.c_str(), "w");
+
+
+    cout << "th: " << th << endl;                       // final value of sampling parameter s
+    cout << "No. of sequences: " << total << endl;      // total sequences read
+    FILE *fo = fopen(outf.c_str(), "w");                // file pointer for output file
     uint32_t csize = 0; //MAP.size();
-    for(int i=th; i<64; i++) csize += MAP[i].size();
-    unsigned long F0 = csize * pow(2, (th));
+    for(int i=th; i<64; i++) csize += MAP[i].size();    // total number of samples present in the hash maps;
+                                                        // isn't it the same as 'count'?
+
+    unsigned long F0 = csize * pow(2, (th));            // approximate number of distinct k-mers encountered;
+                                                        // note that, csize is the number of distinct samples present
+                                                        // in the hash maps, and we have ignored 'th' number of bits
+                                                        // from each hash value; considering a uniform distributions of
+                                                        // bits in each of those 'th' bits, there are 2^th equally likely
+                                                        // prefixes possible for each sample k-mer present.
+                                                        // another way to interpret is that, the final sampling rate is
+                                                        // 1/2^th i.e. we have kept one sample per 2^th samples; hence,
+                                                        // scale csize by 2^th to get approximate distinct k-mer count
+
     cout << "F0: " << F0 << endl;
     fprintf(fo, "F1\t%lu\n", no_kmers);
     fprintf(fo, "F0\t%lu\n", F0);
     cout << endl;
     cout << "total: " << total << endl;
-    cout << "no_kmer: " << no_kmers << endl;
+    cout << "no_kmer: " << no_kmers << endl;            // total k-mers encountered
     //unsigned long freq[65];
-   unsigned long *freq = new unsigned long[cov];
+   unsigned long *freq = new unsigned long[cov];        // k-mer frequency distribution table;
+                                                        // only interested in the k-mers with frequency <= coverage
    for(int i=1; i<=cov; i++) freq[i] = 0;
-    unsigned long tot = 0;
-    int xx = 0;
-    for(int i=th; i<64; i++){
-      for(auto& p: MAP[i]){
-      //for(auto& p: MAP){
-        if(p.second <= cov) freq[p.second]++;
+    //unsigned long tot = 0;
+    //int xx = 0;
+    for(int i=th; i<64; i++)    // iterate over the hash maps (first 'th' maps have been dropped during sampling)
+    {
+      for(auto& p: MAP[i])      // for each sample in hash map i
+      {
+        if(p.second <= cov)         // if its frequency does not exceed the coverage input
+            freq[p.second]++;       // add this k-mer's frequency to the distribution
       }
     }
-    /*for (auto it = m.begin(); it != m.end(); it++){
-      if(it->second <= 65) freq[it->second]++;
-    }*/
-    //FILE *fo = fopen(argv[4], "w");
+
+
     cout << "th: " << th << endl;
     for(int i=1; i<=cov; i++){
-      unsigned long fff = (freq[i]*pow(2, th));
+      unsigned long fff = (freq[i]*pow(2, th));     // approximation of f_i (scaled by 2^th, as the final sampling
+                                                    // rate is 1 / 2^th)
       fprintf(fo, "f%d\t%lu\n", i, fff);
     }
     fclose(fo);
-    //unsigned long F0 = MAP.size() * pow(2, (th));
-    //cout << "F0: " << F0 << endl;
-    return 0;
 
+    return 0;
 }
