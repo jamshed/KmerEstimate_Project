@@ -43,11 +43,15 @@
 //#include "dna_test.h"
 #include "ntHashIterator.hpp"
 
+
 #include<ctime>
 #include<mutex>
+#include<thread>
 
 #define SPP_MIX_HASH 1
 #include "sparsepp/spp.h"
+
+#define THREAD_COUNT 8
 
 using spp::sparse_hash_map;
 typedef sparse_hash_map<uint64_t, uint32_t> SMap;
@@ -288,6 +292,45 @@ int main(int argc, char** argv)
     uint64_t no_kmers = 0;          // count of k-mers read
     int count = 0;                  // count of samples present in the hash maps currently
 
+    bool done = false;
+    thread T[THREAD_COUNT];
+    char *S[THREAD_COUNT];
+
+    while(true)
+    {
+        if(done)
+            break;
+
+        int t;
+        for(t = 0; t < THREAD_COUNT; ++t)
+        {
+            if(kseq_read(seq) < 0)
+            {
+                done = true;
+                break;
+            }
+
+            //cout << "\n\nHERE inside nested loop\n\n";
+
+            total++;
+
+            //cout << "At sequence " << total << endl;
+            //cout << "sequence len = " << seq -> seq.l << endl;
+
+            S[t] = (char *)malloc(seq -> seq.l + 1);
+            memcpy(S[t], seq -> seq.s, seq -> seq.l);
+            T[t] = thread(&process_sequence, S[t], ref(th), ref(no_kmers), ref(count), k, maxSampleCount,
+                          ref(MAP), ref(thLock), ref(no_kmersLock), ref(countLock), ref(mapLock));
+        }
+
+        for(int i = 0; i < t; ++i)
+        {
+            T[i].join();
+            free(S[i]);
+        }
+    }
+
+    /*
     while(kseq_read(seq) >= 0)   // read a sequence
     {
         ++total;    // one more sequence read
@@ -295,7 +338,7 @@ int main(int argc, char** argv)
         process_sequence(seq -> seq.s, th, no_kmers, count, k, maxSampleCount, MAP,
                          thLock, no_kmersLock, countLock, mapLock);
     }
-
+    */
 
     cout << "th: " << th << endl;                       // final value of the sampling parameter s
     cout << "No. of sequences: " << total << endl;      // total sequences read
