@@ -44,11 +44,13 @@
 #include "ntHashIterator.hpp"
 
 #include<ctime>
+#include<mutex>
 
 #define SPP_MIX_HASH 1
 #include "sparsepp/spp.h"
 
 using spp::sparse_hash_map;
+typedef sparse_hash_map<uint64_t, uint32_t> SMap;
 
 using namespace std;
 //KSEQ_INIT(gzFile, gzread)
@@ -82,6 +84,136 @@ void printHelp()
     exit(0);
 }
 
+void parse_input(int argc, char **argv, int &k, int &maxSampleCount, int &coverage, string &inpFile, string &outpFile)
+{
+    for (int c = 1; c < argc; c++)  // parse command-line input
+    {
+        if(!strcmp(argv[c], "-h"))      // help prompt
+            printHelp();
+        else if(!strcmp(argv[c], "-k"))
+        {
+            k = atoi(argv[c+1]);        // k-mer length
+            c++;
+        }
+        else if(!strcmp(argv[c], "-f"))
+        {
+            inpFile = argv[c+1];              // input file
+            c++;
+        }
+        else if(!strcmp(argv[c], "-s"))
+        {
+            maxSampleCount = atoi(argv[c+1]);        // sample size
+            c++;
+        }
+        else if(!strcmp(argv[c], "-c"))
+        {
+            coverage = atoi(argv[c+1]);      // coverage
+            c++;
+        }
+        else if(!strcmp(argv[c], "-o"))
+        {
+            outpFile = argv[c+1];           // output file
+            c++;
+        }
+    }
+}
+
+void process_sequence(char *s, int &th, uint64_t &no_kmers, int &count, int k, int maxSampleCount, vector<SMap> &MAP,
+                      mutex &thLock, mutex &no_kmersLock, mutex &countLock, vector<mutex> &mapLock)
+{
+    uint64_t hash = 0;
+
+    ntHashIterator itr(s, 1, k);    // ntHash iterator to iterate over the read sequence and provide
+                                    // ntHash values for each of its k-mers of length n; initialized with
+                                    // the first length-n window on the sequence
+
+    while (itr != itr.end())                            // iterate until the last k-mer window
+    {
+        hash = (*itr)[0];                               // get the ntHash value
+
+        no_kmersLock.lock();
+        ++no_kmers;                                     // one more k-mer read
+        no_kmersLock.unlock();
+
+        uint8_t tz = trailing_zeros(hash);              // #trailing_zeroes of this k-mer
+
+        thLock.lock();
+        int threshold = th;
+        thLock.unlock();
+
+        if(tz >= threshold)                             // if #trailing_zeroes is greater than or equal to threshold
+        {                                               // then sample this k-mer
+            mapLock[tz].lock();
+
+            if(MAP[tz].find(hash) != MAP[tz].end())     // k-mer already present in hash map
+            {
+                MAP[tz][hash] += 1;                     // increment k-mer count
+
+                mapLock[tz].unlock();
+            }
+            else                                        // k-mer absent in hash map
+            {
+                MAP[tz].insert(make_pair(hash, 1));     // insert k-mer into hash map
+
+                mapLock[tz].unlock();
+
+                countLock.lock();
+                int presentCount = ++count;                                // increment #samples_present by one
+                countLock.unlock();
+
+                /*
+                    I guess there is a potential bug present in this conditional check. The conditional should be
+                    (count >= k) instead of (count == k).
+
+                    Assume that you have reached the max sample count 'k', and now have dropped the s'th hash map
+                    (MAP[th] here). Hence, the number of samples present 'count' drop down to
+                    (count - MAP[th].size()). Suppose that the hash map MAP[th] did not have any entries present
+                    prior to deletion. Hence, 'count' retains the same value 'k' as earlier. Now at the next
+                    iteration, suppose that you encounter a new k-mer, insert it to one of the hash maps, increment
+                    'count' by 1; so it goes to k + 1. Only now the code flow will go to the conditional.
+
+                    You will never drop any hash map anymore in the lifetime of this execution, and space-usage
+                    will not be optimized as theorized.
+
+                    However, my proposal of the conditional (count >= k) also should present very unlikely yet
+                    potential bug(s) too, in case of a stream of hash values with very long suffixes of trailing
+                    zeroes, and the lower order entries in the hash map arrays being all empty.
+
+                    Best solution is to use a loop of the following format:
+                        while(count == k):
+                            drop hash maps and update count
+                */
+                if(presentCount == maxSampleCount)          // max sample count reached
+                {                                           // one hash map will be dropped now
+                    cout << "Samples count reached " << count << endl;
+
+                    mapLock[th].lock();
+
+                    int cnt = MAP[th].size();               // size of the hash map to be dropped
+                    SMap().swap(MAP[th]);                   // drop hash map from memory
+
+                    mapLock[th].unlock();
+
+                    cout << "Dropping a hash map of size " << cnt << endl;
+
+                    countLock.lock();
+                    count = count - cnt;                    // #samples_present after dropping corresponding hash map
+                    countLock.unlock();
+
+                    //MAP[th].clear(); //MAP[th].resize(0);
+                    thLock.lock();
+                    ++th;
+                    thLock.unlock();
+                                              // increment threshold (s parameter)
+                    cout  << "New samples count: " << count << endl;
+                }
+            }
+        }
+
+        ++itr;      // go over to the next window
+    }
+}
+
 int main(int argc, char** argv)
 {
     clock_t beginTime = clock();
@@ -92,46 +224,17 @@ int main(int argc, char** argv)
         exit(0);
     }
 
-    int n = 31;                     // default k-mer length
-    int s = 25000000;               // default sample size
-    int cov = 64;                   // default coverage (maximum k-mer frequency we are interested in)
-    string f = "", outf = "";       // input and output FASTA file names
-    for (int c = 1; c < argc; c++)  // parse command-line input
-    {
+    int k = 31;                     // default k-mer length
+    int maxSampleCount = 25000000;  // default sample size
+    int coverage = 64;                   // default coverage (maximum k-mer frequency we are interested in)
+    string inpFile = "", outpFile = "";       // input and output FASTA file names
 
-        if(!strcmp(argv[c], "-h"))      // help prompt
-            printHelp();
-        else if(!strcmp(argv[c], "-k"))
-        {
-            n = atoi(argv[c+1]);        // k-mer length
-            c++;
-        }
-        else if(!strcmp(argv[c], "-f"))
-        {
-            f = argv[c+1];              // input file
-            c++;
-        }
-        else if(!strcmp(argv[c], "-s"))
-        {
-            s = atoi(argv[c+1]);        // sample size
-            c++;
-        }
-        else if(!strcmp(argv[c], "-c"))
-        {
-            cov = atoi(argv[c+1]);      // coverage
-            c++;
-        }
-        else if(!strcmp(argv[c], "-o"))
-        {
-            outf = argv[c+1];           // output file
-            c++;
-        }
-    }
+    parse_input(argc, argv, k, maxSampleCount, coverage, inpFile, outpFile);
 
-    if (f.empty()  || outf.empty())  // empty file(s) mentioned
+    if (inpFile.empty()  || outpFile.empty())  // empty file(s) mentioned
         printHelp();
 
-    FILE *fp;
+    FILE *inpFilePtr;
     kseq_t *seq;
     /*
         The C header file kseq.h is a small library for parsing the FASTA/FASTQ format.
@@ -151,11 +254,9 @@ int main(int argc, char** argv)
         // FMI: http://lh3lh3.users.sourceforge.net/parsefastq.shtml
     */
 
-    int l;
-
-    fp = fopen(f.c_str(), "r");     // file pointer for input FASTA file
-    if(fp == Z_NULL){
-      cout << "File: " << f << " does not exist" << endl;
+    inpFilePtr = fopen(inpFile.c_str(), "r");     // file pointer for input FASTA file
+    if(inpFilePtr == Z_NULL){
+      cout << "File: " << inpFile << " does not exist" << endl;
       exit(1);
     }
 
@@ -166,8 +267,7 @@ int main(int argc, char** argv)
         Function kseq_read() reads one sequence and fills the kseq_t struct.
         FMI: http://lh3lh3.users.sourceforge.net/parsefastq.shtml
     */
-    seq = kseq_init(fileno(fp));    // seq is the FASTA input parser
-    int k = s;                      // sample size
+    seq = kseq_init(fileno(inpFilePtr));    // seq is the FASTA input parser
 
     /*
         sparse_hash_map is distinguished from other hash-map implementations by its stingy use of memory and by the
@@ -175,8 +275,10 @@ int main(int argc, char** argv)
         efficient, is slower than other hash-map implementations.
         FMI: http://goog-sparsehash.sourceforge.net/doc/sparse_hash_map.html
     */
-    typedef sparse_hash_map<uint64_t, uint32_t> SMap;
     vector<SMap> MAP(64);           // array of hash maps for sampled k-mers
+
+    mutex thLock, no_kmersLock, countLock;
+    vector<mutex> mapLock(64);
 
     cout << "read the Sequences .. " << endl;
 
@@ -185,83 +287,20 @@ int main(int argc, char** argv)
     uint64_t total = 0;             // count of sequences read
     uint64_t no_kmers = 0;          // count of k-mers read
     int count = 0;                  // count of samples present in the hash maps currently
-    uint64_t hash = 0;
-    while((l = kseq_read(seq)) >= 0)   // read a sequence
+
+    while(kseq_read(seq) >= 0)   // read a sequence
     {
         ++total;    // one more sequence read
         //cout << "\r" << total << " processing ..." << flush;
-
-        int len = strlen(seq -> seq.s);         // length of the sequence
-        ntHashIterator itr(seq -> seq.s, 1, n); // ntHash iterator to iterate over the read sequence and provide
-                                                // ntHash values for each of its k-mers of length n; initialized with
-                                                // the first length-n window on the sequence
-
-        while(itr != itr.end())                            // iterate until the last k-mer window
-        {
-            hash = (*itr)[0];                               // get the ntHash value
-            ++no_kmers;                                     // one more k-mer read
-            uint8_t tz = trailing_zeros(hash);              // #trailing_zeroes of this k-mer
-
-            if(tz >= th)                                    // if #trailing_zeroes is greater than or equal to threshold
-            {                                               // then sample this k-mer
-                if(MAP[tz].find(hash) != MAP[tz].end())     // k-mer already present in hash map
-                    MAP[tz][hash] += 1;                     // increment k-mer count
-                else                                        // k-mer absent in hash map
-                {
-                    MAP[tz].insert(make_pair(hash, 1));     // insert k-mer into hash map
-                    ++count;                                // increment #samples_present by one
-
-                    //cout << "\r" << "count: " << count << flush;// << endl;
-
-                    /*
-                        I guess there is a potential bug present in this conditional check. The conditional should be
-                        (count >= k) instead of (count == k).
-
-                        Assume that you have reached the max sample count 'k', and now have dropped the s'th hash map
-                        (MAP[th] here). Hence, the number of samples present 'count' drop down to
-                        (count - MAP[th].size()). Suppose that the hash map MAP[th] did not have any entries present
-                        prior to deletion. Hence, 'count' retains the same value 'k' as earlier. Now at the next
-                        iteration, suppose that you encounter a new k-mer, insert it to one of the hash maps, increment
-                        'count' by 1; so it goes to k + 1. Only now the code flow will go to the conditional.
-
-                        You will never drop any hash map anymore in the lifetime of this execution, and space-usage
-                        will not be optimized as theorized.
-
-                        However, my proposal of the conditional (count >= k) also should present very unlikely yet
-                        potential bug(s) too, in case of a stream of hash values with very long suffixes of trailing
-                        zeroes, and the lower order entries in the hash map arrays being all empty.
-
-                        Best solution is to use a loop of the following format:
-                            while(count == k):
-                                drop hash maps and update count
-                    */
-                    if(count == k)                              // max sample count reached
-                    {                                           // one hash map will be dropped now
-                        cout << "Samples count reached " << count << endl;
-
-                        int cnt = MAP[th].size();               // size of the hash map to be dropped
-
-                        cout << "Dropping a hash map of size " << cnt << endl;
-
-                        count = count - cnt;                    // #samples_present after dropping corresponding hash map
-                        SMap().swap(MAP[th]);                   // drop hash map from memory
-                        //MAP[th].clear(); //MAP[th].resize(0);
-
-                        ++th;                                   // increment threshold (s parameter)
-                        cout  << "New samples count: " << count << endl;
-                    }
-                }
-            }
-
-            ++itr;      // go over to the next window
-        }
+        process_sequence(seq -> seq.s, th, no_kmers, count, k, maxSampleCount, MAP,
+                         thLock, no_kmersLock, countLock, mapLock);
     }
 
 
     cout << "th: " << th << endl;                       // final value of the sampling parameter s
     cout << "No. of sequences: " << total << endl;      // total sequences read
 
-    FILE *fo = fopen(outf.c_str(), "w");                // file pointer for output file
+    FILE *outpFilePtr = fopen(outpFile.c_str(), "w");                // file pointer for output file
     uint32_t csize = 0; //MAP.size();
     for(int i = th; i < 64; i++)
         csize += MAP[i].size();                         // total number of samples present in the hash maps;
@@ -286,42 +325,43 @@ int main(int argc, char** argv)
 
     cout << "F0: " << F0 << endl;
 
-    fprintf(fo, "F1\t%lu\n", no_kmers);
-    fprintf(fo, "F0\t%lu\n", F0);
+    fprintf(outpFilePtr, "F1\t%lu\n", no_kmers);
+    fprintf(outpFilePtr, "F0\t%lu\n", F0);
 
     cout << endl;
     cout << "total sequences: " << total << endl;       // total sequences read
     cout << "no_kmer: " << no_kmers << endl;            // total k-mers read
 
     //unsigned long freq[65];
-   unsigned long *freq = new unsigned long[cov];        // k-mer frequency distribution table;
+   unsigned long *freq = new unsigned long[coverage];        // k-mer frequency distribution table;
                                                         // only interested in the k-mers with frequency <= coverage
-   for(int i = 1; i <= cov; i++)
+   for(int i = 1; i <= coverage; i++)
         freq[i] = 0;
 
     for(int i = th; i < 64; i++)    // iterate over the hash maps (first 'th' maps have been dropped during sampling)
         for(auto& p : MAP[i])           // for each sample in hash map i
-            if(p.second <= cov)             // if its frequency does not exceed the coverage
+            if(p.second <= coverage)             // if its frequency does not exceed the coverage
                 freq[p.second]++;               // add this k-mer's frequency to the distribution
 
 
     cout << "final th (s-value): " << th << endl;
-    for(int i = 1; i <= cov; i++)
+    for(int i = 1; i <= coverage; i++)
     {
         unsigned long fff = (freq[i] * pow(2, th)); // approximation of f_i (scaled by 2^th, as the final sampling
                                                     // rate is 1 / 2^th)
-        fprintf(fo, "f%d\t%lu\n", i, fff);
+        fprintf(outpFilePtr, "f%d\t%lu\n", i, fff);
     }
 
     clock_t endTime = clock();
     double elapsedSecs = double(endTime - beginTime) / CLOCKS_PER_SEC;
 
     cout << "\n\nTime taken = " << elapsedSecs << " seconds\n" << endl;
-    fprintf(fo, "\n\nTime taken = %lf seconds\n", elapsedSecs);
+    fprintf(outpFilePtr, "\n\nTime taken = %lf seconds\n", elapsedSecs);
 
-    fclose(fo);
+    fclose(outpFilePtr);
 
     // add kseq_t destroyer here
 
     return 0;
 }
+
