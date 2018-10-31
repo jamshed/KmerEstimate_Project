@@ -66,4 +66,4 @@ f63	288
 f64	400
 
 
-Time taken = 92.458153 seconds
+Time taken = 109.164461 seconds

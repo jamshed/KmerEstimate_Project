@@ -44,7 +44,6 @@
 #include "ntHashIterator.hpp"
 
 
-// New headers added
 #include<ctime>
 #include<mutex>
 #include<thread>
@@ -52,8 +51,7 @@
 #define SPP_MIX_HASH 1
 #include "sparsepp/spp.h"
 
-// New macros defined
-#define THREAD_COUNT 8
+#define THREAD_COUNT 4
 #define MAX_SEQ_LEN 1025
 
 using spp::sparse_hash_map;
@@ -126,7 +124,7 @@ void parse_input(int argc, char **argv, int &k, int &maxSampleCount, int &covera
 }
 
 
-void process_sequence(char *s, int &th, uint64_t &no_kmers, int &count, int k, int maxSampleCount, vector<SMap> &MAP,
+void process_sequence_2(char *s, int &th, uint64_t &no_kmers, int &count, int k, int maxSampleCount, vector<SMap> &MAP,
                       mutex &thLock, mutex &no_kmersLock, mutex &countLock, vector<mutex> &mapLock, mutex &mapDropLock,
                       bool *threadFree, int threadNum)
 {
@@ -140,15 +138,10 @@ void process_sequence(char *s, int &th, uint64_t &no_kmers, int &count, int k, i
     {
         hash = (*itr)[0];                               // get the ntHash value
 
+       // no_kmersLock.lock();
+        //++no_kmers;                                     // one more k-mer read
+      //  no_kmersLock.unlock();
 
-        // Relocate this to the main function, instead of increasing contention mutexes
-        /*
-        no_kmersLock.lock();
-        ++no_kmers;                                     // one more k-mer read
-        no_kmersLock.unlock();
-        */
-
-        // can add micro-optimizations of bit operations here
         uint8_t tz = trailing_zeros(hash);              // #trailing_zeroes of this k-mer
 
         //thLock.lock();
@@ -324,15 +317,14 @@ int main(int argc, char** argv)
     bool done = false;
     thread T[THREAD_COUNT];
 
-    kseq_t *S[THREAD_COUNT];
     bool threadFree[THREAD_COUNT];
     // stack<int> freeThreads;
     bool threadUsedOnce[THREAD_COUNT];
-    char sequences[THREAD_COUNT][MAX_SEQ_LEN + 1];
+    char S[THREAD_COUNT][MAX_SEQ_LEN + 1];
 
     for(int i = 0; i < THREAD_COUNT; ++i)
     {
-        S[i] = kseq_init(fileno(inpFilePtr));
+        // S[i] = kseq_init(fileno(inpFilePtr));
         threadFree[i] = true;
         threadUsedOnce[i] = false;
     }
@@ -348,10 +340,6 @@ int main(int argc, char** argv)
 
         threadFree[t] = false;
 
-        kstream_t *originalStream = seq -> f;
-        seq = S[t];
-        seq -> f = originalStream;
-
         clock_t ioStart = clock();
 
         if(kseq_read(seq) < 0)
@@ -365,8 +353,6 @@ int main(int argc, char** argv)
 
         ioTime += (double)(ioEnd - ioStart);
 
-        S[t] = seq;
-
         total++;
 
         //cout << "At sequence " << total << endl;
@@ -375,11 +361,14 @@ int main(int argc, char** argv)
         // S[t] = (char *)malloc(seq -> seq.l + 1);
         // memcpy(S[t], seq -> seq.s, seq -> seq.l);
         //T[t].terminate();
+
+        strcpy(&S[t][0], seq -> seq.s);
+
         if(threadUsedOnce[t])
             T[t].join();
         threadUsedOnce[t] = true;
 
-        T[t] = thread(&process_sequence, S[t] -> seq.s, ref(th), ref(no_kmers), ref(count), k, maxSampleCount,
+        T[t] = thread(&process_sequence_2, &S[t][0], ref(th), ref(no_kmers), ref(count), k, maxSampleCount,
                       ref(MAP), ref(thLock), ref(no_kmersLock), ref(countLock), ref(mapLock), ref(mapDropLock),
                       threadFree, t);
 
@@ -506,4 +495,5 @@ int main(int argc, char** argv)
 
     return 0;
 }
+
 

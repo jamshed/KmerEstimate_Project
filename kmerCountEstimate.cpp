@@ -186,8 +186,19 @@ int main(int argc, char** argv)
     uint64_t no_kmers = 0;          // count of k-mers read
     int count = 0;                  // count of samples present in the hash maps currently
     uint64_t hash = 0;
-    while((l = kseq_read(seq)) >= 0)   // read a sequence
+
+    double diskReadTime = 0;
+    while(true)   // read a sequence
     {
+        double readStart = clock();
+
+        if(kseq_read(seq) < 0)
+            break;
+
+        double readEnd = clock();
+
+        diskReadTime += readEnd - readStart;
+
         ++total;    // one more sequence read
         //cout << "\r" << total << " processing ..." << flush;
 
@@ -318,6 +329,8 @@ int main(int argc, char** argv)
 
     cout << "\n\nTime taken = " << elapsedSecs << " seconds\n" << endl;
     fprintf(fo, "\n\nTime taken = %lf seconds\n", elapsedSecs);
+
+    cout << "Disk read time " << diskReadTime / CLOCKS_PER_SEC << endl;
 
     fclose(fo);
 
