@@ -138,6 +138,9 @@ void process_sequence(char *s, int &th, uint64_t &no_kmers, int &count, int k, i
 
     while (itr != itr.end())                            // iterate until the last k-mer window
     {
+        if(count > maxSampleCount)
+            cout << "\n\n\nCluster fuck\n\n\n";
+
         hash = (*itr)[0];                               // get the ntHash value
 
 
@@ -157,23 +160,38 @@ void process_sequence(char *s, int &th, uint64_t &no_kmers, int &count, int k, i
 
         if(tz >= threshold)                             // if #trailing_zeroes is greater than or equal to threshold
         {                                               // then sample this k-mer
-            mapLock[tz].lock();
 
-            if(MAP[tz].find(hash) != MAP[tz].end())     // k-mer already present in hash map
+            mapLock[tz].lock();
+            auto p = MAP[tz].find(hash), e = MAP[tz].end();
+            //mapLock[tz].unlock();
+
+            // mapLock[tz].lock();
+
+            if(p != e)     // k-mer already present in hash map
             {
+                // mapLock[tz].lock();
+
                 MAP[tz][hash] += 1;                     // increment k-mer count
 
                 mapLock[tz].unlock();
             }
             else                                        // k-mer absent in hash map
             {
+                countLock.lock();
+
+                //mapLock[tz].lock();
+
                 MAP[tz].insert(make_pair(hash, 1));     // insert k-mer into hash map
 
                 mapLock[tz].unlock();
 
-                countLock.lock();
+                //cout << "Thread " << threadNum << "took hold of count lock" << endl;
+
+                // countLock.lock();
                 int presentCount = ++count;                                // increment #samples_present by one
-                countLock.unlock();
+                // countLock.unlock();
+
+                // cout << count << endl;
 
                 /*
                     I guess there is a potential bug present in this conditional check. The conditional should be
@@ -197,11 +215,11 @@ void process_sequence(char *s, int &th, uint64_t &no_kmers, int &count, int k, i
                         while(count == k):
                             drop hash maps and update count
                 */
-                if(presentCount >= maxSampleCount)          // max sample count reached
+                if(count >= maxSampleCount)          // max sample count reached
                 {                                           // one hash map will be dropped now
                     cout << "Samples count reached " << count << endl;
 
-                    mapDropLock.lock();
+                    //mapDropLock.lock();
                     //mapLock[th].lock();
 
                     int cnt = MAP[th].size();               // size of the hash map to be dropped
@@ -220,10 +238,14 @@ void process_sequence(char *s, int &th, uint64_t &no_kmers, int &count, int k, i
                     ++th;
                     //thLock.unlock();
 
-                    mapDropLock.unlock();
+                    // mapDropLock.unlock();
                                               // increment threshold (s parameter)
                     cout  << "New samples count: " << count << endl;
                 }
+
+                //cout << "Thread " << threadNum << "releasing hold of count lock" << endl;
+
+                countLock.unlock();
             }
         }
 
