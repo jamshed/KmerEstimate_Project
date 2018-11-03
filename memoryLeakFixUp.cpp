@@ -122,6 +122,7 @@ void parse_input(int argc, char **argv, int &k, int &maxSampleCount, int &covera
 
 
 mutex countLock;
+vector<mutex> mapLock(65);
 
 void process_sequence(char *s, int &th, uint64_t &no_kmers, int &count, int k, int maxSampleCount, vector<SMap> &MAP,
                       bool *threadFree, int threadNum)
@@ -140,13 +141,21 @@ void process_sequence(char *s, int &th, uint64_t &no_kmers, int &count, int k, i
 
         if(tz >= th)                                    // if #trailing_zeroes is greater than or equal to threshold
         {                                               // then sample this k-mer
+            mapLock[tz].lock();
+
             if(MAP[tz].find(hash) != MAP[tz].end())     // k-mer already present in hash map
+            {
                 MAP[tz][hash] += 1;                     // increment k-mer count
+                mapLock[tz].unlock();
+            }
             else                                        // k-mer absent in hash map
             {
-                //countLock.lock();
-
                 MAP[tz].insert(make_pair(hash, 1));     // insert k-mer into hash map
+                mapLock[tz].unlock();
+
+                countLock.lock();
+
+
                 ++count;                                // increment #samples_present by one
 
                 //cout << "\r" << "count: " << count << flush;// << endl;
@@ -189,7 +198,7 @@ void process_sequence(char *s, int &th, uint64_t &no_kmers, int &count, int k, i
                     cout  << "New samples count: " << count << endl;
                 }
 
-                //countLock.unlock();
+                countLock.unlock();
             }
         }
 
@@ -310,7 +319,6 @@ int main(int argc, char** argv)
 
         int t = get_free_thread(threadFree);
 
-        strcpy(&S[t][0], seq -> seq.s);
         threadFree[t] = false;
 
         if(threadUsed[t])
@@ -318,6 +326,7 @@ int main(int argc, char** argv)
 
         threadUsed[t] = true;
 
+        strcpy(&S[t][0], seq -> seq.s);
         T[t] = thread(&process_sequence, &S[t][0], ref(th), ref(no_kmers), ref(count),
                       k, maxSampleCount, ref(MAP), threadFree, 0);
         //T[t].join();

@@ -1,23 +1,52 @@
-// hash example
+/**
+ * Producer-Comsumer example, written in C++ May 4, 2014
+ * Compiled on OSX 10.9, using:
+ * g++ -std=c++11 producer_consumer.cpp
+ **/
+
 #include <iostream>
-#include <functional>
-#include <string>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
 
-int main ()
-{
-  char nts1[] = "Test";
-  char nts2[] = "Test";
-  std::string str1 (nts1);
-  std::string str2 (nts2);
+std::mutex mtx;
+std::condition_variable cv;
 
-  std::hash<char*> ptr_hash;
-  std::hash<std::string> str_hash;
-  std::hash<int> int_hash;
+int meal = 0;
 
-  std::cout << "same hashes:\n" << std::boolalpha;
-  std::cout << "nts1 and nts2: " << (ptr_hash(nts1)==ptr_hash(nts2)) << '\n';
-  std::cout << "str1 and str2: " << (str_hash(str1)==str_hash(str2)) << '\n';
-  std::cout << "int1 and int2: " << (int_hash(45)==int_hash(44)) << '\n';
+/* Consumer */
+void waiter(int ordernumber){
+  std::unique_lock<std::mutex> lck(mtx);
+  while(meal == 0) cv.wait(lck);
+  std::cout << "Order: ";
+  std::cout << ordernumber + 1 << " being taken care of with ";
+  std::cout << meal - 1 << " meals also ready." << std::endl;
+  meal--;
+}
+
+/* Producer */
+void makeMeal(int ordernumber){
+  std::unique_lock<std::mutex> lck(mtx);
+  meal++;
+  cv.notify_one();
+}
+
+int main(){
+
+  std::thread chefs[10];
+  std::thread waiters[10];
+
+  /* Initialize customers and cheifs */
+  for (int order = 0; order < 10; order++){
+    chefs[order] = std::thread(makeMeal, order);
+    waiters[order] = std::thread(waiter, order);
+  }
+
+  /* Join the threads to the main threads */
+  for (int order = 0; order < 10; order++) {
+    waiters[order].join();
+    chefs[order].join();
+  }
 
   return 0;
 }

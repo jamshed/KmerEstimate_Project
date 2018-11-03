@@ -46,10 +46,11 @@
 #include<ctime>
 #include<thread>
 #include<mutex>
+#include<condition_variable>
 
 #define SPP_MIX_HASH 1
 #include "sparsepp/spp.h"
-#define THREAD_COUNT 4
+#define THREAD_COUNT 1
 #define MAX_LEN 1024
 
 using spp::sparse_hash_map;
@@ -121,14 +122,20 @@ void parse_input(int argc, char **argv, int &k, int &maxSampleCount, int &covera
 }
 
 
-mutex countLock;
+mutex countLock, no_kmersLock;
+vector<mutex> mapLock(65);
+
+int th;
+uint64_t no_kmers;
+int k;
+int maxSampleCount;
+vector<SMap> MAP(64);
 
 
-void process_sequence(char *s, int &th, uint64_t &no_kmers, int &count, int k, int maxSampleCount, vector<SMap> &MAP)
+void process_sequence(char *s, int &count)
 {
-    cout << "HERE" << endl;
-
     uint64_t hash = 0;
+    uint64_t kc = 0;
 
     ntHashIterator itr(s, 1, k); // ntHash iterator to iterate over the read sequence and provide
                                                 // ntHash values for each of its k-mers of length n; initialized with
@@ -137,100 +144,119 @@ void process_sequence(char *s, int &th, uint64_t &no_kmers, int &count, int k, i
     while(itr != itr.end())                            // iterate until the last k-mer window
     {
         hash = (*itr)[0];                               // get the ntHash value
-        ++no_kmers;                                     // one more k-mer read
+        kc++;
         uint8_t tz = trailing_zeros(hash);              // #trailing_zeroes of this k-mer
 
         if(tz >= th)                                    // if #trailing_zeroes is greater than or equal to threshold
         {                                               // then sample this k-mer
+            mapLock[tz].lock();
+
             if(MAP[tz].find(hash) != MAP[tz].end())     // k-mer already present in hash map
+            {
                 MAP[tz][hash] += 1;                     // increment k-mer count
+                mapLock[tz].unlock();
+            }
             else                                        // k-mer absent in hash map
             {
-                //countLock.lock();
-
                 MAP[tz].insert(make_pair(hash, 1));     // insert k-mer into hash map
+                mapLock[tz].unlock();
+
+                countLock.lock();
+
                 ++count;                                // increment #samples_present by one
 
-                //cout << "\r" << "count: " << count << flush;// << endl;
-
-                /*
-                    I guess there is a potential bug present in this conditional check. The conditional should be
-                    (count >= k) instead of (count == k).
-
-                    Assume that you have reached the max sample count 'k', and now have dropped the s'th hash map
-                    (MAP[th] here). Hence, the number of samples present 'count' drop down to
-                    (count - MAP[th].size()). Suppose that the hash map MAP[th] did not have any entries present
-                    prior to deletion. Hence, 'count' retains the same value 'k' as earlier. Now at the next
-                    iteration, suppose that you encounter a new k-mer, insert it to one of the hash maps, increment
-                    'count' by 1; so it goes to k + 1. Only now the code flow will go to the conditional.
-
-                    You will never drop any hash map anymore in the lifetime of this execution, and space-usage
-                    will not be optimized as theorized.
-
-                    However, my proposal of the conditional (count >= k) also should present very unlikely yet
-                    potential bug(s) too, in case of a stream of hash values with very long suffixes of trailing
-                    zeroes, and the lower order entries in the hash map arrays being all empty.
-
-                    Best solution is to use a loop of the following format:
-                        while(count == k):
-                            drop hash maps and update count
-                */
-                if(count == maxSampleCount)                              // max sample count reached
+                while(count >= maxSampleCount)                              // max sample count reached
                 {                                           // one hash map will be dropped now
                     cout << "Samples count reached " << count << endl;
 
+                    mapLock[th].lock();
                     int cnt = MAP[th].size();               // size of the hash map to be dropped
+                    SMap().swap(MAP[th]);                   // drop hash map from memory
+                    mapLock[th].unlock();
 
                     cout << "Dropping a hash map of size " << cnt << endl;
 
                     count = count - cnt;                    // #samples_present after dropping corresponding hash map
-                    SMap().swap(MAP[th]);                   // drop hash map from memory
                     //MAP[th].clear(); //MAP[th].resize(0);
 
                     ++th;                                   // increment threshold (s parameter)
                     cout  << "New samples count: " << count << endl;
                 }
 
-                //countLock.unlock();
+                countLock.unlock();
             }
         }
 
         ++itr;      // go over to the next window
     }
 
-    //threadFree[threadNum] = true;
-
-    cout << "done with a sequence" << endl;
+    //kmerCountLock.lock();
+    no_kmersLock.lock();
+    no_kmers += kc;
+    no_kmersLock.unlock();
+    //kmerCountLock.unlock();
 }
 
-void thread_operation(char *threadBuffer, int threadID, bool &readFinished, bool *seqAvailable, bool *threadFree,
-                      int &th, uint64_t &no_kmers, int &count, int k, int maxSampleCount, vector<SMap> &MAP)
+bool readFinished;
+bool seqAvailable[THREAD_COUNT];
+bool threadFree[THREAD_COUNT];
+
+mutex bufferLock[THREAD_COUNT];
+condition_variable cv[THREAD_COUNT];
+
+void garbage()
 {
-    cout << "Thread " << threadID << " initiated." << endl;
+    for(int i = 0; i < 100000; ++i);
+}
+
+void thread_operation(char *threadBuffer, int threadID, int &count)
+{
+    //cout << "Thread " << threadID << " initiated." << endl;
 
     while(!readFinished)
     {
-        cout << "waiting for sequences from the thread " << threadID << endl;
-        //cout << "at thread " << threadID << ", sequence availability = " << seqAvailable[threadID] << endl;
+        /*
+        unique_lock<mutex> lck(bufferLock[threadID]);
+
+        while(!seqAvailable[threadID])
+            cv[threadID].wait(lck);
+
+        if(readFinished)
+            break;
+            */
+
         if(seqAvailable[threadID])
         {
-            //cout << "processing a seq from thread " << threadID << endl;
+            //bufferLock[threadID].lock();
 
-            process_sequence(threadBuffer, ref(th), ref(no_kmers), ref(count), k, maxSampleCount, ref(MAP));
+            process_sequence(threadBuffer, ref(count));
+
+            seqAvailable[threadID] = false;
             threadFree[threadID] = true;
+
+            //bufferLock[threadID].unlock();
         }
-        //else
-        //    sleep(10);
+        else
+            sleep(0.00001);
     }
 }
 
 int get_free_thread(bool *threadFree)
 {
-    int i = 0;
+    int t = 0;
 
-    for(; !threadFree[i]; i = (i + 1) % THREAD_COUNT);
+    //for(; !threadFree[i]; i = (i + 1) % THREAD_COUNT);
+    while(true)
+    {
+        if(threadFree[t])
+            break;
 
-    return i;
+        t = (t + 1) % THREAD_COUNT;
+        if(!t)
+            sleep(0.00001);
+    }
+
+    return t;
 }
 
 int main(int argc, char** argv)
@@ -243,8 +269,8 @@ int main(int argc, char** argv)
         exit(0);
     }
 
-    int k = 31;                     // default k-mer length
-    int maxSampleCount = 25000000;  // default sample size
+    k = 31;                     // default k-mer length
+    maxSampleCount = 25000000;  // default sample size
     int coverage = 64;                   // default coverage (maximum k-mer frequency we are interested in)
     string inpFile = "", outpFile = "";       // input and output FASTA file names
 
@@ -294,35 +320,35 @@ int main(int argc, char** argv)
         efficient, is slower than other hash-map implementations.
         FMI: http://goog-sparsehash.sourceforge.net/doc/sparse_hash_map.html
     */
-    vector<SMap> MAP(64);           // array of hash maps for sampled k-mers
+    //vector<SMap> MAP(64);           // array of hash maps for sampled k-mers
 
     cout << "read the Sequences .. " << endl;
 
-    int th = 0;                     // sample-size adaptation parameter 's';
+    //int th = 0;                     // sample-size adaptation parameter 's';
                                     // (the threshold count of the trailing zeroes for hash values)
     uint64_t total = 0;             // count of sequences read
-    uint64_t no_kmers = 0;          // count of k-mers read
-    int count = 0;                  // count of samples present in the hash maps currently
+    int count;
+    //uint64_t no_kmers = 0;          // count of k-mers read
+    //int count = 0;                  // count of samples present in the hash maps currently
 
     double diskReadTime = 0;
 
     //thread thrd;
-    bool readFinished = false;
-    bool threadFree[THREAD_COUNT];
-    //bool threadUsed[THREAD_COUNT];
-    bool seqAvailable[THREAD_COUNT];
+    //bool readFinished = false;
+    //bool threadFree[THREAD_COUNT];
+    //bool seqAvailable[THREAD_COUNT];
     thread T[THREAD_COUNT];
     char S[THREAD_COUNT][MAX_LEN + 1];
+
+    mutex no_kmersLock;
 
 
     for(int i = 0; i < THREAD_COUNT; ++i)
     {
         threadFree[i] = true;
-        //threadUsed[i] = false;
         seqAvailable[i] = false;
 
-        T[i] = thread(&thread_operation, &S[i][0], i, ref(readFinished), seqAvailable, threadFree,
-                      ref(th), ref(no_kmers), ref(count), k, maxSampleCount, ref(MAP));
+        T[i] = thread(&thread_operation, &S[i][0], i, ref(count));
     }
 
     while(true)   // read a sequence
@@ -337,35 +363,39 @@ int main(int argc, char** argv)
         diskReadTime += readEnd - readStart;
 
         ++total;    // one more sequence read
-        //cout << "\r" << total << " processing ..." << flush;
 
-        cout << "sequence " << total << " read" << endl;
+        //cout << "sequence " << total << " read" << endl;
 
         int t = get_free_thread(threadFree);
 
+        //cout << "assigned to thread " << t << ". Its sequences availability = " << seqAvailable[t] << endl;
+
+        //unique_lock<mutex> lck(bufferLock[t]);
+
         threadFree[t] = false;
 
-        //if(threadUsed[t])
-        //    T[t].join();
-
-        //threadUsed[t] = true;
-
+        //bufferLock[t].lock();
+        //lock_buffer(t);
         strcpy(&S[t][0], seq -> seq.s);
+
+        //bufferLock[t].unlock();
+        //unlock_buffer(t);
+
         seqAvailable[t] = true;
 
-        cout << "assigned to thread " << t << ". Its sequences availability = " << seqAvailable[t] << endl;
-
-        //T[t] = thread(&process_sequence, &S[t][0], ref(th), ref(no_kmers), ref(count),
-        //              k, maxSampleCount, ref(MAP), threadFree, 0);
-        //T[t].join();
-        //process_sequence(seq -> seq.s, th, no_kmers, count, k, maxSampleCount, MAP);
+        //cv[t].notify_one();
     }
 
     readFinished = true;
 
+    cout << "read finished: " << readFinished << endl;
+
     for(int i = 0; i < THREAD_COUNT; ++i)
-        //if(!threadFree[i])
+    {
+        cout << "joining thread " << i << endl;
+        //cv[i].notify_one();
         T[i].join();
+    }
 
 
 
