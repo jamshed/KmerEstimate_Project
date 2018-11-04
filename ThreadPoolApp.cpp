@@ -213,7 +213,7 @@ void thread_operation(char *threadBuffer, int threadID, int &count)
 {
     //cout << "Thread " << threadID << " initiated." << endl;
 
-    while(!readFinished)
+    while(!readFinished || seqAvailable[threadID])
     {
         /*
         unique_lock<mutex> lck(bufferLock[threadID]);
