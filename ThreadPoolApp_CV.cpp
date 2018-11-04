@@ -143,6 +143,9 @@ void process_sequence(char *s, int &count)
 
     while(itr != itr.end())                            // iterate until the last k-mer window
     {
+        if(count > maxSampleCount)
+            cout << "FUCK" << endl;
+
         hash = (*itr)[0];                               // get the ntHash value
         kc++;
         uint8_t tz = trailing_zeros(hash);              // #trailing_zeroes of this k-mer
@@ -215,15 +218,16 @@ void thread_operation(char *threadBuffer, int threadID, int &count)
 
     while(!readFinished || seqAvailable[threadID])
     {
-        /*
+
         unique_lock<mutex> lck(bufferLock[threadID]);
 
         while(!seqAvailable[threadID])
+        {
             cv[threadID].wait(lck);
 
-        if(readFinished)
-            break;
-            */
+            if(readFinished)
+                break;
+        }
 
         if(seqAvailable[threadID])
         {
@@ -236,8 +240,8 @@ void thread_operation(char *threadBuffer, int threadID, int &count)
 
             //bufferLock[threadID].unlock();
         }
-        else
-            sleep(0.00001);
+        //else
+        //    sleep(0.00001);
     }
 }
 
@@ -370,7 +374,7 @@ int main(int argc, char** argv)
 
         //cout << "assigned to thread " << t << ". Its sequences availability = " << seqAvailable[t] << endl;
 
-        //unique_lock<mutex> lck(bufferLock[t]);
+        unique_lock<mutex> lck(bufferLock[t]);
 
         threadFree[t] = false;
 
@@ -383,7 +387,7 @@ int main(int argc, char** argv)
 
         seqAvailable[t] = true;
 
-        //cv[t].notify_one();
+        cv[t].notify_one();
     }
 
     readFinished = true;
@@ -393,7 +397,7 @@ int main(int argc, char** argv)
     for(int i = 0; i < THREAD_COUNT; ++i)
     {
         cout << "joining thread " << i << endl;
-        //cv[i].notify_one();
+        cv[i].notify_one();
         T[i].join();
     }
 
@@ -468,3 +472,4 @@ int main(int argc, char** argv)
 
     return 0;
 }
+
