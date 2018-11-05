@@ -47,6 +47,7 @@
 #include<thread>
 #include<mutex>
 #include<condition_variable>
+#include<chrono>
 
 #define SPP_MIX_HASH 1
 #include "sparsepp/spp.h"
@@ -57,6 +58,7 @@ using spp::sparse_hash_map;
 typedef sparse_hash_map<uint64_t, uint32_t> SMap;
 
 using namespace std;
+using namespace chrono;
 //KSEQ_INIT(gzFile, gzread)
 KSEQ_INIT(int, read)        // The C header file kseq.h is a small library for parsing the FASTA/FASTQ format.
                             // For ordinary file I/O, you can use KSEQ_INIT(gzFile, gzread) to set the type of
@@ -123,7 +125,7 @@ void parse_input(int argc, char **argv, int &k, int &maxSampleCount, int &covera
 
 
 mutex countLock, no_kmersLock;
-vector<mutex> mapLock(65);
+vector<mutex> mapLock(64);
 
 int th;
 uint64_t no_kmers;
@@ -265,7 +267,8 @@ int get_free_thread(bool *threadFree)
 
 int main(int argc, char** argv)
 {
-    clock_t beginTime = clock();
+    // clock_t beginTime = clock();
+    high_resolution_clock::time_point t1 = high_resolution_clock::now();
 
     if(argc == 1)
     {
@@ -357,15 +360,17 @@ int main(int argc, char** argv)
 
     while(true)   // read a sequence
     {
-        double readStart = clock();
+        //double readStart = clock();
+        //high_resolution_clock::time_point readStart = high_resolution_clock::now();
 
         if(kseq_read(seq) < 0)
             break;
 
-        double readEnd = clock();
+        //double readEnd = clock();
+        //high_resolution_clock::time_point readEnd = high_resolution_clock::now();
 
-        diskReadTime += readEnd - readStart;
-
+        //diskReadTime += readEnd - readStart;
+        //diskReadTime += (duration_cast<duration<double>>(t2 - t1)).count();
         ++total;    // one more sequence read
 
         //cout << "sequence " << total << " read" << endl;
@@ -458,13 +463,19 @@ int main(int argc, char** argv)
         fprintf(outpFilePtr, "f%d\t%lu\n", i, fff);
     }
 
-    clock_t endTime = clock();
-    double elapsedSecs = double(endTime - beginTime) / CLOCKS_PER_SEC;
+    //clock_t endTime = clock();
+    high_resolution_clock::time_point t2 = high_resolution_clock::now();
+
+    duration<double> time_span = duration_cast<duration<double>>(t2 - t1);
+
+    //double elapsedSecs = double(endTime - beginTime) / CLOCKS_PER_SEC;
+    double elapsedSecs = time_span.count();
+
 
     cout << "\n\nTime taken = " << elapsedSecs << " seconds\n" << endl;
     fprintf(outpFilePtr, "\n\nTime taken = %lf seconds\n", elapsedSecs);
 
-    cout << "Disk read time " << diskReadTime / CLOCKS_PER_SEC << endl;
+    //cout << "Disk read time " << diskReadTime / CLOCKS_PER_SEC << endl;
 
     fclose(outpFilePtr);
 

@@ -1,52 +1,16 @@
-/**
- * Producer-Comsumer example, written in C++ May 4, 2014
- * Compiled on OSX 10.9, using:
- * g++ -std=c++11 producer_consumer.cpp
- **/
+#include<cstdio>
 
-#include <iostream>
-#include <thread>
-#include <mutex>
-#include <condition_variable>
+using namespace std;
 
-std::mutex mtx;
-std::condition_variable cv;
+int main()
+{
+    char line[10];
+    char ch;
 
-int meal = 0;
+    gets(line);
+    ch = getchar();
 
-/* Consumer */
-void waiter(int ordernumber){
-  std::unique_lock<std::mutex> lck(mtx);
-  while(meal == 0) cv.wait(lck);
-  std::cout << "Order: ";
-  std::cout << ordernumber + 1 << " being taken care of with ";
-  std::cout << meal - 1 << " meals also ready." << std::endl;
-  meal--;
-}
+    printf("line = %s\nch = %c\n", line, ch);
 
-/* Producer */
-void makeMeal(int ordernumber){
-  std::unique_lock<std::mutex> lck(mtx);
-  meal++;
-  cv.notify_one();
-}
-
-int main(){
-
-  std::thread chefs[10];
-  std::thread waiters[10];
-
-  /* Initialize customers and cheifs */
-  for (int order = 0; order < 10; order++){
-    chefs[order] = std::thread(makeMeal, order);
-    waiters[order] = std::thread(waiter, order);
-  }
-
-  /* Join the threads to the main threads */
-  for (int order = 0; order < 10; order++) {
-    waiters[order].join();
-    chefs[order].join();
-  }
-
-  return 0;
+    return 0;
 }
