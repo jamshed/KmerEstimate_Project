@@ -43,7 +43,7 @@
 //#include "dna_test.h"
 #include "ntHashIterator.hpp"
 
-#include<ctime>
+#include<chrono>
 
 #define SPP_MIX_HASH 1
 #include "sparsepp/spp.h"
@@ -52,6 +52,9 @@ using spp::sparse_hash_map;
 typedef sparse_hash_map<uint64_t, uint32_t> SMap;
 
 using namespace std;
+
+using namespace chrono;
+
 //KSEQ_INIT(gzFile, gzread)
 KSEQ_INIT(int, read)        // The C header file kseq.h is a small library for parsing the FASTA/FASTQ format.
                             // For ordinary file I/O, you can use KSEQ_INIT(gzFile, gzread) to set the type of
@@ -187,7 +190,7 @@ void process_sequence(char *s, int &th, uint64_t &no_kmers, int &count, int k, i
 
 int main(int argc, char** argv)
 {
-    clock_t beginTime = clock();
+    high_resolution_clock::time_point t1 = high_resolution_clock::now();
 
     if(argc == 1)
     {
@@ -259,14 +262,15 @@ int main(int argc, char** argv)
     double diskReadTime = 0;
     while(true)   // read a sequence
     {
-        double readStart = clock();
+        high_resolution_clock::time_point readStart = high_resolution_clock::now();
 
         if(kseq_read(seq) < 0)
             break;
 
-        double readEnd = clock();
+        high_resolution_clock::time_point readEnd = high_resolution_clock::now();
+        duration<double> time_span = duration_cast<duration<double>>(readEnd - readStart);
 
-        diskReadTime += readEnd - readStart;
+        diskReadTime += time_span.count();
 
         ++total;    // one more sequence read
         //cout << "\r" << total << " processing ..." << flush;
@@ -330,13 +334,16 @@ int main(int argc, char** argv)
         fprintf(outpFilePtr, "f%d\t%lu\n", i, fff);
     }
 
-    clock_t endTime = clock();
-    double elapsedSecs = double(endTime - beginTime) / CLOCKS_PER_SEC;
+    high_resolution_clock::time_point t2 = high_resolution_clock::now();
+    duration<double> time_span = duration_cast<duration<double>>(t2 - t1);
+
+    //double elapsedSecs = double(endTime - beginTime) / CLOCKS_PER_SEC;
+    double elapsedSecs = time_span.count();
 
     cout << "\n\nTime taken = " << elapsedSecs << " seconds\n" << endl;
     fprintf(outpFilePtr, "\n\nTime taken = %lf seconds\n", elapsedSecs);
 
-    cout << "Disk read time " << diskReadTime / CLOCKS_PER_SEC << endl;
+    cout << "Disk read time " << diskReadTime << endl;
 
     fclose(outpFilePtr);
 
