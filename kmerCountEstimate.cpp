@@ -344,6 +344,7 @@ int main(int argc, char** argv)
     fprintf(outpFilePtr, "\n\nTime taken = %lf seconds\n", elapsedSecs);
 
     cout << "Disk read time " << diskReadTime << endl;
+    fprintf(outpFilePtr, "\n\nDisk read time = %lf seconds\n", diskReadTime);
 
     fclose(outpFilePtr);
 

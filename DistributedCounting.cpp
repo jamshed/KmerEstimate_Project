@@ -52,7 +52,7 @@
 
 #define SPP_MIX_HASH 1
 #include "sparsepp/spp.h"
-#define THREAD_COUNT 16
+#define THREAD_COUNT 7
 #define MAX_LEN 1024
 
 using spp::sparse_hash_map;
