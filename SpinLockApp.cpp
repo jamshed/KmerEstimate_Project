@@ -52,8 +52,8 @@
 
 #define SPP_MIX_HASH 1
 #include "sparsepp/spp.h"
-//#define THREAD_COUNT 7
 #define MAX_THREADS 1003
+// #define THREAD_COUNT 4
 // #define MAX_LEN 1024
 
 using spp::sparse_hash_map;
@@ -134,8 +134,8 @@ void parse_input(int argc, char **argv, int &k, int &maxSampleCount, int &thread
 }
 
 
-void process_sequence(char *s, int k, int maxSampleCount,
-                      int &currSampleCount, int &th, uint64_t &kmerCount, vector<SMap> &MAP)
+void process_sequence(char *s, int k, int maxSampleCount, int &currSampleCount, int &th, uint64_t &kmerCount,
+                      vector<SMap> &MAP)
 {
     uint8_t tz;
     int dropSize;
@@ -204,39 +204,44 @@ struct DistributedCount
     */
 };
 
-bool readFinished;
-bool seqAvailable[MAX_THREADS];
-bool threadFree[MAX_THREADS];
+volatile bool readFinished;
+volatile int seqAvailable[MAX_THREADS];
+volatile bool threadFree[MAX_THREADS];
 char *S[MAX_THREADS];
 
-mutex bufferLock[MAX_THREADS];
-condition_variable cv[MAX_THREADS];
+#define ABSENT 0
+#define PRESENT 1
+#define NO_MORE -1
+
+//mutex bufferLock[THREAD_COUNT];
+//condition_variable cv[THREAD_COUNT];
 
 void thread_operation(DistributedCount &memory, int threadID, int k, int maxSampleCount)
 {
     cout << "Thread " << threadID << " initiated." << endl;
 
-    while(!readFinished || seqAvailable[threadID])
+    while(!readFinished || seqAvailable[threadID] == PRESENT)
     {
-        unique_lock<mutex> lck(bufferLock[threadID]);
+        //unique_lock<mutex> lck(bufferLock[threadID]);
 
-        while(!seqAvailable[threadID])
-        {
+        while(seqAvailable[threadID] == ABSENT);
+        /*{
             cv[threadID].wait(lck);
 
             if(readFinished)
                 break;
-        }
+        }*/
 
-        if(seqAvailable[threadID])
+        if(seqAvailable[threadID] == PRESENT)
         {
             process_sequence(S[threadID], k, maxSampleCount, memory.currSampleCount, memory.th, memory.kmerCount,
                              memory.MAP);
 
-            seqAvailable[threadID] = false;
+            //seqAvailable[threadID] = false;
+            seqAvailable[threadID] = ABSENT;
 
             threadFree[threadID] = true;
-            cv[threadID].notify_one();
+            //cv[threadID].notify_one();
         }
     }
 }
@@ -338,10 +343,10 @@ void round_robin(string &inpFile, DistributedCount &output, int k, int maxSample
     int threadIdx = 0;  // thread index
     while(true)         // read a sequence
     {
-        unique_lock<mutex> lck(bufferLock[threadIdx]);
+        //unique_lock<mutex> lck(bufferLock[threadIdx]);
 
-        while(!threadFree[threadIdx])
-            cv[threadIdx].wait(lck);
+        while(!threadFree[threadIdx]);
+            //cv[threadIdx].wait(lck);
 
         kstream_t *originalStream = seq -> f;
         seq = seqReads[threadIdx];
@@ -362,8 +367,9 @@ void round_robin(string &inpFile, DistributedCount &output, int k, int maxSample
         //strcpy(&S[t][0], seq -> seq.s);
         S[threadIdx] = seqReads[threadIdx] -> seq.s;
 
-        seqAvailable[threadIdx] = true;
-        cv[threadIdx].notify_one();
+        //seqAvailable[threadIdx] = true;
+        seqAvailable[threadIdx] = PRESENT;
+        //cv[threadIdx].notify_one();
 
         threadIdx = (threadIdx + 1) % threadCount;        //get to next thread
     }
@@ -375,7 +381,8 @@ void round_robin(string &inpFile, DistributedCount &output, int k, int maxSample
     for(int i = 0; i < threadCount; ++i)
     {
         cout << "joining thread " << i << endl;
-        cv[i].notify_one();
+        //cv[i].notify_one();
+        seqAvailable[i] = NO_MORE;
         T[i].join();
     }
 
