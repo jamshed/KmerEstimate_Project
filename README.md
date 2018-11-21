@@ -3,7 +3,7 @@ Compile and Run
 Compile:
 
 
-		g++ -o kmerEst kmerCountEstimate.cpp -std=c++11 -O3 -march=native
+		g++ -o kmerEst kmerCountEstimate.cpp -std=c++11 -O3 -march=native -pthread
 
 Run:
 

@@ -90,37 +90,40 @@ void print_help()
     exit(0);
 }
 
-void parse_input(int argc, char **argv, int &k, int &maxSampleCount, int &coverage, string &inpFile, string &outpFile)
+void parse_input(int argc, char **argv, int &k, int &maxSampleCount, int &coverage, bool &memUnconstrained,
+                 string &inpFile, string &outpFile)
 {
-    for (int c = 1; c < argc; c++)  // parse command-line input
+    for (int c = 1; c < argc; c++)              // parse command-line input
     {
-        if(!strcmp(argv[c], "-h"))      // help prompt
+        if(!strcmp(argv[c], "-h"))              // help prompt
             print_help();
         else if(!strcmp(argv[c], "-k"))
         {
-            k = atoi(argv[c+1]);        // k-mer length
+            k = atoi(argv[c+1]);                // k-mer length
             c++;
         }
         else if(!strcmp(argv[c], "-f"))
         {
-            inpFile = argv[c+1];              // input file
+            inpFile = argv[c+1];                // input file
             c++;
         }
         else if(!strcmp(argv[c], "-s"))
         {
-            maxSampleCount = atoi(argv[c+1]);        // sample size
+            maxSampleCount = atoi(argv[c+1]);   // sample size
             c++;
         }
         else if(!strcmp(argv[c], "-c"))
         {
-            coverage = atoi(argv[c+1]);      // coverage
+            coverage = atoi(argv[c+1]);         // coverage
             c++;
         }
         else if(!strcmp(argv[c], "-o"))
         {
-            outpFile = argv[c+1];           // output file
+            outpFile = argv[c+1];               // output file
             c++;
         }
+        else if(!strcmp(argv[c], "-m"))
+            memUnconstrained = true;
     }
 }
 
@@ -198,7 +201,7 @@ struct DistributedCount
 bool readFinished;
 bool seqAvailable[THREAD_COUNT];
 bool threadFree[THREAD_COUNT];
-char *threadBuffer[THREAD_COUNT];
+// char *threadBuffer[THREAD_COUNT];
 char *S[THREAD_COUNT];
 
 mutex bufferLock[THREAD_COUNT];
@@ -268,7 +271,7 @@ void consolidate_outputs(DistributedCount *distCount, DistributedCount &output, 
     th = distCount[0].th;
 }
 
-void round_robin(string &inpFile, DistributedCount &output, int k, int maxSampleCount)
+void round_robin(string &inpFile, DistributedCount &output, int k, int maxSampleCount, bool memUnconstrained)
 {
     kseq_t *seq;
     /*
@@ -323,7 +326,8 @@ void round_robin(string &inpFile, DistributedCount &output, int k, int maxSample
 
         seqReads[i] = kseq_init(fileno(inpFilePtr));
 
-        T[i] = thread(&thread_operation, ref(distCount[i]), i, k, maxSampleCount / THREAD_COUNT);
+        T[i] = thread(&thread_operation, ref(distCount[i]), i, k,
+                      memUnconstrained ? maxSampleCount : maxSampleCount / THREAD_COUNT);
     }
 
     int threadIdx = 0;  // thread index
@@ -449,16 +453,17 @@ int main(int argc, char** argv)
     int k = 31;                             // default k-mer length
     int maxSampleCount = 25000000;          // default sample size
     int coverage = 64;                      // default coverage (maximum k-mer frequency we are interested in)
+    bool memUnconstrained = false;          // whether the maxSampleCount is being distributed over the threads
     string inpFile = "", outpFile = "";     // input and output FASTA file names
 
-    parse_input(argc, argv, k, maxSampleCount, coverage, inpFile, outpFile);
+    parse_input(argc, argv, k, maxSampleCount, coverage, memUnconstrained, inpFile, outpFile);
 
     if (inpFile.empty()  || outpFile.empty())   // empty file(s) mentioned
         print_help();
 
     DistributedCount output;
 
-    round_robin(inpFile, output, k, maxSampleCount);
+    round_robin(inpFile, output, k, maxSampleCount, memUnconstrained);
 
 
     FILE *outpFilePtr = fopen(outpFile.c_str(), "w");   // file pointer for output file
