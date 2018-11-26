@@ -5,10 +5,18 @@ Compile:
 
 		g++ -o kmerEst kmerCountEstimate.cpp -std=c++11 -O3 -march=native -pthread
 
-Run:
+Run original single-threaded implementation:
 
 		./kmerEst -f <seq.fa> -k  <kmerLen> -s <minHeap_Size> -c <coverage> -o <out.txt>
   
   
   
+Run multi-threaded implementation (Conditional-variable based approach):
+
+		./distCount -f <seq.fa> -k  <kmerLen> -s <minHeap_Size> -t <thread count> -c <coverage> -o <out.txt>
+		
+		
+Run multi-threaded implementation (Spin-lock based approach):
+
+		./spin -f <seq.fa> -k  <kmerLen> -s <minHeap_Size> -t <thread count> -c <coverage> -o <out.txt>
   
