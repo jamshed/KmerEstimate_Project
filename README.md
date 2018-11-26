@@ -20,3 +20,8 @@ Run multi-threaded implementation (Spin-lock based approach):
 
 		./spin -f <seq.fa> -k  <kmerLen> -s <minHeap_Size> -t <thread count> -c <coverage> -o <out.txt>
   
+
+
+Datasets
+------------------------------
+https://drive.google.com/drive/folders/1Nbp2Q38OY2_Y-CKe7pcxU6b3pLVnYuEL?usp=sharing
