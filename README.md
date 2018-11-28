@@ -1,11 +1,19 @@
 Compile and Run
 ------------------------------
-Compile:
+
+Compile original single-threaded algorithm implementation:
+
+		g++ -o kmerEst kmerCountEstimate.cpp -std=c++11 -O3 -march=native
+		
+Compile parallel algorithm implementation(s):
+
+		g++ -o distCount DistributedCounting.cpp -std=c++11 -O3 -march=native -pthread
+		
+		g++ -o spin SpinLockApp.cpp -std=c++11 -O3 -march=native -pthread
 
 
-		g++ -o kmerEst kmerCountEstimate.cpp -std=c++11 -O3 -march=native -pthread
 
-Run original single-threaded implementation:
+Run original single-threaded algorithm implementation:
 
 		./kmerEst -f <seq.fa> -k  <kmerLen> -s <minHeap_Size> -c <coverage> -o <out.txt>
   
