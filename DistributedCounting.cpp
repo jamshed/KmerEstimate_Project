@@ -442,6 +442,8 @@ void get_output(FILE *outpFilePtr, DistributedCount &output, int coverage)
                                                     // rate is 1 / 2^th)
         fprintf(outpFilePtr, "f%d\t%lu\n", i, fff);
     }
+
+    fprintf(outpFilePtr, "\n\nfFinal value of th = %d\n", th);
 }
 
 int main(int argc, char** argv)
