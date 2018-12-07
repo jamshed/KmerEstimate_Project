@@ -66,7 +66,10 @@ f63	4600512
 f64	4583296
 
 
-Time taken = 1644.501797 seconds
+fFinal value of th = 6
 
 
-Disk read time = 818.837887 seconds
+Time taken = 1317.876478 seconds
+
+
+Disk read time = 487.370044 seconds
