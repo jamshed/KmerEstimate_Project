@@ -69,4 +69,4 @@ f64	4572672
 fFinal value of th = 7
 
 
-Time taken = 1260.079052 seconds
+Time taken = 1196.622706 seconds
