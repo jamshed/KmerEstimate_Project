@@ -1,7 +1,7 @@
 Compile and Run
 ------------------------------
 
-Compile original single-threaded algorithm implementation:
+Compile original algorithm implementation:
 
 		g++ -o kmerEst kmerCountEstimate.cpp -std=c++11 -O3 -march=native
 		
@@ -19,12 +19,12 @@ Run original (serial) algorithm implementation:
   
   
   
-Run parallel (multi-threaded) implementation (Monitor i.e. lock and conditional-variable based approach):
+Run parallel (multi-threaded) algorithm implementation (Monitor i.e. lock and conditional-variable based approach):
 
 		./monitor -f <seq.fa> -k  <kmerLen> -s <minHeap_Size> -t <thread count> -c <coverage> -o <out.txt>
 		
 		
-Run parallel (multi-threaded) implementation (Spinlock based approach):
+Run parallel (multi-threaded) algorithm implementation (Spinlock based approach):
 
 		./spinlock -f <seq.fa> -k  <kmerLen> -s <minHeap_Size> -t <thread count> -c <coverage> -o <out.txt>
   
