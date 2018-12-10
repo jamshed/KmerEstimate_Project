@@ -7,26 +7,26 @@ Compile original single-threaded algorithm implementation:
 		
 Compile parallel algorithm implementation(s):
 
-		g++ -o distCount DistributedCounting.cpp -std=c++11 -O3 -march=native -pthread
+		g++ -o monitor Monitor.cpp -std=c++11 -O3 -march=native -pthread
 		
-		g++ -o spin SpinLockApp.cpp -std=c++11 -O3 -march=native -pthread
+		g++ -o spinlock Spinlock.cpp -std=c++11 -O3 -march=native -pthread
 
 
 
-Run original single-threaded algorithm implementation:
+Run original (serial) algorithm implementation:
 
 		./kmerEst -f <seq.fa> -k  <kmerLen> -s <minHeap_Size> -c <coverage> -o <out.txt>
   
   
   
-Run multi-threaded implementation (Conditional-variable based approach):
+Run parallel (multi-threaded) implementation (Monitor i.e. lock and conditional-variable based approach):
 
-		./distCount -f <seq.fa> -k  <kmerLen> -s <minHeap_Size> -t <thread count> -c <coverage> -o <out.txt>
+		./monitor -f <seq.fa> -k  <kmerLen> -s <minHeap_Size> -t <thread count> -c <coverage> -o <out.txt>
 		
 		
-Run multi-threaded implementation (Spin-lock based approach):
+Run parallel (multi-threaded) implementation (Spinlock based approach):
 
-		./spin -f <seq.fa> -k  <kmerLen> -s <minHeap_Size> -t <thread count> -c <coverage> -o <out.txt>
+		./spinlock -f <seq.fa> -k  <kmerLen> -s <minHeap_Size> -t <thread count> -c <coverage> -o <out.txt>
   
 
 
